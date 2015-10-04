@@ -95,7 +95,7 @@ class ParticleFilter:
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
         # TODO: define additional constants if needed
-        self.LASER_ERROR = 0.05
+        self.LASER_ERROR = 0.1
         self.ODOM_ERROR = 0.2
 
         # Setup pubs and subs
@@ -142,11 +142,11 @@ class ParticleFilter:
         # just to get started we will fix the robot's pose to always be at the origin
         x_sum, y_sum, theta_sum = 0, 0, 0
         for i in self.particle_cloud:
-            x_sum += i.x * i.w
-            y_sum += i.y * i.w
-            theta_sum += i.theta * i.w
+            x_sum += i.x
+            y_sum += i.y
+            theta_sum += i.theta
 
-        particle_mean = Particle(x=x_sum, y=y_sum, theta=theta_sum)
+        particle_mean = Particle(x=x_sum/self.n_particles, y=y_sum/self.n_particles, theta=theta_sum/self.n_particles)
         self.robot_pose = particle_mean.as_pose()
 
     def update_particles_with_odom(self, msg):
@@ -172,15 +172,15 @@ class ParticleFilter:
 
         # TODO: modify particles using delta
         # For added difficulty: Implement sample_motion_odometry (Prob Rob p 136)
-        for i in self.particle_cloud:
-            i.x     += gauss(delta[0], self.ODOM_ERROR)
-            i.y     += gauss(delta[1], self.ODOM_ERROR)
-            i.theta += gauss(delta[2], self.ODOM_ERROR)
+        d = gauss(math.sqrt(delta[0]**2 + delta[1]**2), self.ODOM_ERROR)
+        r1 = gauss(math.atan2(delta[1], delta[0]) - old_odom_xy_theta[2], self.ODOM_ERROR)
+        r2 = gauss(delta[2] - r1, self.ODOM_ERROR)
 
-            if i.theta > 2 * math.pi:
-                i.theta %= 2 * math.pi
-            elif i.theta < 0:
-                i.theta += 2 * math.pi
+        for i in self.particle_cloud:
+            i.theta += r1
+            i.x     += gauss(d * math.cos(i.theta), self.ODOM_ERROR)
+            i.y     += gauss(d * math.sin(i.theta), self.ODOM_ERROR)
+            i.theta += r2
 
     def map_calc_range(self,x,y,theta):
         """ Difficulty Level 3: implement a ray tracing likelihood model... Let me know if you are interested """
@@ -200,41 +200,33 @@ class ParticleFilter:
         probabilities = []
         for i in self.particle_cloud:
             probabilities.append(i.w)
-        new_particles = ParticleFilter.draw_random_sample(self.particle_cloud, probabilities, self.n_particles)
+        self.particle_cloud = ParticleFilter.draw_random_sample(self.particle_cloud, probabilities, self.n_particles)
 
     def update_particles_with_laser(self, msg):
         """ Updates the particle weights in response to the scan contained in the msg """
         # TODO: implement this
-        scan_range = [0]
+        scan_range = range(360)
         weights = {}
         particle_num = 0
         for j in scan_range:
             for i in self.particle_cloud:
                 # Transform laser scan obstacle point to reference frame of particle
                 r = msg.ranges[j]
-                pose_x = self.robot_pose.position.x + r * math.cos(j * math.pi / 180)
-                pose_y = self.robot_pose.position.y + r * math.sin(j * math.pi / 180)
-                pose_theta = self.robot_pose.orientation.z
-                particle_x, particle_y, particle_theta = i.x, i.y, i.theta
-                (delta_x, delta_y, delta_theta) = (particle_x - pose_x, particle_y - pose_y, particle_theta - pose_theta)
-                trans_x = delta_x * math.cos(delta_theta) - delta_y * math.sin(delta_theta)
-                trans_y = delta_x * math.sin(delta_theta) + delta_y * math.cos(delta_theta)
+                trans_x = i.x + r * math.cos(i.theta + j * math.pi / 180)
+                trans_y = i.y + r * math.sin(i.theta + j * math.pi / 180)
 
                 d = self.occupancy_field.get_closest_obstacle_distance(trans_x, trans_y) 
-                if d >= self.laser_max_distance:
-                    d = self.laser_max_distance
-                print ([pose_x, pose_y], [trans_x, trans_y])
 
                 #find closest obstacle, subtract from previous val to get d
                 if i in weights:
-                    weights[particle_num] += math.exp(-d*d/(2*self.LASER_ERROR**2)) / 360
+                    weights[particle_num] += math.exp(-d*d/(2*self.LASER_ERROR**2))
                 else:
-                    weights[particle_num] = math.exp(-d*d/(2*self.LASER_ERROR**2)) / 360
+                    weights[particle_num] = math.exp(-d*d/(2*self.LASER_ERROR**2))
                 particle_num += 1
             particle_num = 0
 
         for i in range(self.n_particles):
-            self.particle_cloud[i].w = weights[i]
+            self.particle_cloud[i].w *= weights[i]
 
         self.normalize_particles()
 
@@ -282,9 +274,9 @@ class ParticleFilter:
         # TODO create particles
         self.particle_cloud = []
         for i in range(self.n_particles):
-            x_gauss     = gauss(xy_theta[0], self.LASER_ERROR)
-            y_gauss     = gauss(xy_theta[1], self.LASER_ERROR)
-            theta_gauss = gauss(xy_theta[2], self.LASER_ERROR)
+            x_gauss     = gauss(xy_theta[0], 0.3)
+            y_gauss     = gauss(xy_theta[1], 0.3)
+            theta_gauss = gauss(xy_theta[2], 0.3)
 
             self.particle_cloud.append(Particle(x_gauss, y_gauss, theta_gauss))
 
@@ -308,7 +300,7 @@ class ParticleFilter:
         # actually send the message so that we can view it in rviz
         self.particle_pub.publish(PoseArray(header=Header(stamp=rospy.Time.now(),
                                             frame_id=self.map_frame),
-                                  poses=particles_conv))
+                                            poses=particles_conv))
 
     def scan_received(self, msg):
         """ This is the default logic for what to do when processing scan data.
