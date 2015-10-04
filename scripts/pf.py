@@ -142,11 +142,11 @@ class ParticleFilter:
         # just to get started we will fix the robot's pose to always be at the origin
         x_sum, y_sum, theta_sum = 0, 0, 0
         for i in self.particle_cloud:
-            x_sum += i.x
-            y_sum += i.y
-            theta_sum += i.theta
+            x_sum += i.x * i.w
+            y_sum += i.y * i.w
+            theta_sum += i.theta * i.w
 
-        particle_mean = Particle(x=x_sum/self.n_particles, y=y_sum/self.n_particles, theta=theta_sum/self.n_particles)
+        particle_mean = Particle(x=x_sum, y=y_sum, theta=theta_sum)
         self.robot_pose = particle_mean.as_pose()
 
     def update_particles_with_odom(self, msg):
@@ -172,9 +172,9 @@ class ParticleFilter:
 
         # TODO: modify particles using delta
         # For added difficulty: Implement sample_motion_odometry (Prob Rob p 136)
-        d = gauss(math.sqrt(delta[0]**2 + delta[1]**2), self.ODOM_ERROR)
-        r1 = gauss(math.atan2(delta[1], delta[0]) - old_odom_xy_theta[2], self.ODOM_ERROR)
-        r2 = gauss(delta[2] - r1, self.ODOM_ERROR)
+        d = math.sqrt(delta[0]**2 + delta[1]**2)
+        r1 = math.atan2(delta[1], delta[0]) - old_odom_xy_theta[2]
+        r2 = delta[2] - r1
 
         for i in self.particle_cloud:
             i.theta += r1
@@ -210,15 +210,16 @@ class ParticleFilter:
         particle_num = 0
         for j in scan_range:
             for i in self.particle_cloud:
+                if msg.ranges[j] == 0.0:
+                    continue
                 # Transform laser scan obstacle point to reference frame of particle
                 r = msg.ranges[j]
                 trans_x = i.x + r * math.cos(i.theta + j * math.pi / 180)
                 trans_y = i.y + r * math.sin(i.theta + j * math.pi / 180)
 
-                d = self.occupancy_field.get_closest_obstacle_distance(trans_x, trans_y) 
-
-                #find closest obstacle, subtract from previous val to get d
-                if i in weights:
+                # Finds closest obstacle from projection of laser scan to particle
+                d = self.occupancy_field.get_closest_obstacle_distance(trans_x, trans_y)
+                if particle_num in weights:
                     weights[particle_num] += math.exp(-d*d/(2*self.LASER_ERROR**2))
                 else:
                     weights[particle_num] = math.exp(-d*d/(2*self.LASER_ERROR**2))
@@ -227,6 +228,8 @@ class ParticleFilter:
 
         for i in range(self.n_particles):
             self.particle_cloud[i].w *= weights[i]
+
+        print weights
 
         self.normalize_particles()
 
