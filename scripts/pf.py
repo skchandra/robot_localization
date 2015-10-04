@@ -95,8 +95,8 @@ class ParticleFilter:
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
         # TODO: define additional constants if needed
-        self.LASER_ERROR = 0.1
-        self.ODOM_ERROR = 0.2
+        self.LASER_ERROR = 0.05
+        self.ODOM_ERROR = 0.1
 
         # Setup pubs and subs
 
@@ -227,7 +227,7 @@ class ParticleFilter:
             particle_num = 0
 
         for i in range(self.n_particles):
-            self.particle_cloud[i].w *= weights[i]
+            self.particle_cloud[i].w = weights[i]
 
         print weights
 
