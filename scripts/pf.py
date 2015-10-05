@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 
-""" This is the starter code for the robot localization project """
+""" Jay Woo and Shivali Chandra
+    Code that implements a particle filter to determine robot position
+    Using starter code from Paul Ruvolo
+    10/6/15 """
 
 import rospy
 
@@ -140,14 +143,14 @@ class ParticleFilter:
 
         # TODO: assign the lastest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
-        x_sum, y_sum, theta_sum = 0, 0, 0
-        for i in self.particle_cloud:
-            x_sum += i.x * i.w
+        x_sum, y_sum, theta_sum = 0, 0, 0 
+        for i in self.particle_cloud:   #iterate through the particle cloud
+            x_sum += i.x * i.w          #add weighted x, y, theta of each particle
             y_sum += i.y * i.w
             theta_sum += i.theta * i.w
 
-        particle_mean = Particle(x=x_sum, y=y_sum, theta=theta_sum)
-        self.robot_pose = particle_mean.as_pose()
+        particle_mean = Particle(x=x_sum, y=y_sum, theta=theta_sum)  #create avg particle
+        self.robot_pose = particle_mean.as_pose()   #set robot pose at avg particle
 
     def update_particles_with_odom(self, msg):
         """ Update the particles using the newly given odometry pose.
@@ -172,14 +175,14 @@ class ParticleFilter:
 
         # TODO: modify particles using delta
         # For added difficulty: Implement sample_motion_odometry (Prob Rob p 136)
-        d = math.sqrt(delta[0]**2 + delta[1]**2)
-        r1 = math.atan2(delta[1], delta[0]) - old_odom_xy_theta[2]
-        r2 = delta[2] - r1
+        d = math.sqrt(delta[0]**2 + delta[1]**2)    #distance between robot pose and particle pose
+        r1 = math.atan2(delta[1], delta[0]) - old_odom_xy_theta[2]  #intial theta to rotate robot by
+        r2 = delta[2] - r1  #theta between robot orientation after traveling d and final particle orientation
 
-        for i in self.particle_cloud:
+        for i in self.particle_cloud:   #for each particle transform position
             i.theta += r1
-            i.x     += gauss(d * math.cos(i.theta), self.ODOM_ERROR)
-            i.y     += gauss(d * math.sin(i.theta), self.ODOM_ERROR)
+            i.x     += gauss(d * math.cos(i.theta), self.ODOM_ERROR)    #add noise
+            i.y     += gauss(d * math.sin(i.theta), self.ODOM_ERROR)    #add noise
             i.theta += r2
 
     def map_calc_range(self,x,y,theta):
@@ -198,19 +201,20 @@ class ParticleFilter:
 
         # TODO: fill out the rest of the implementation
         probabilities = []
-        for i in self.particle_cloud:
+        for i in self.particle_cloud:   #add each particle's weight to list
             probabilities.append(i.w)
+        #call function to return a random sample of particles based on weights
         self.particle_cloud = ParticleFilter.draw_random_sample(self.particle_cloud, probabilities, self.n_particles)
 
     def update_particles_with_laser(self, msg):
         """ Updates the particle weights in response to the scan contained in the msg """
         # TODO: implement this
-        scan_range = range(360)
+        scan_range = range(360) #all scan distances
         weights = {}
         particle_num = 0
         for j in scan_range:
-            for i in self.particle_cloud:
-                if msg.ranges[j] == 0.0:
+            for i in self.particle_cloud:   #for each scan angle go through each particle
+                if msg.ranges[j] == 0.0:    #do not use distance if it is 0.0 ie no obstacle
                     continue
                 # Transform laser scan obstacle point to reference frame of particle
                 r = msg.ranges[j]
@@ -219,19 +223,17 @@ class ParticleFilter:
 
                 # Finds closest obstacle from projection of laser scan to particle
                 d = self.occupancy_field.get_closest_obstacle_distance(trans_x, trans_y)
-                if particle_num in weights:
+                if particle_num in weights: #create weight based on laser error and d
                     weights[particle_num] += math.exp(-d*d/(2*self.LASER_ERROR**2))
                 else:
                     weights[particle_num] = math.exp(-d*d/(2*self.LASER_ERROR**2))
-                particle_num += 1
-            particle_num = 0
+                particle_num += 1   #increment particle number in cloud list
+            particle_num = 0    #reset particle num to loop through cloud again
 
         for i in range(self.n_particles):
-            self.particle_cloud[i].w = weights[i]
+            self.particle_cloud[i].w = weights[i]   #set particle weight
 
-        print weights
-
-        self.normalize_particles()
+        self.normalize_particles()  #normalize weights to add up to 1
 
     @staticmethod
     def weighted_values(values, probabilities, size):
@@ -276,11 +278,11 @@ class ParticleFilter:
 
         # TODO create particles
         self.particle_cloud = []
-        for i in range(self.n_particles):
-            x_gauss     = gauss(xy_theta[0], 0.3)
+        for i in range(self.n_particles):   #create particles with noise; within range +/- 0.3 of each aspect of pose
+            x_gauss     = gauss(xy_theta[0], 0.3)   
             y_gauss     = gauss(xy_theta[1], 0.3)
             theta_gauss = gauss(xy_theta[2], 0.3)
-
+            #add particle to cloud
             self.particle_cloud.append(Particle(x_gauss, y_gauss, theta_gauss))
 
         self.normalize_particles()
@@ -291,10 +293,10 @@ class ParticleFilter:
 
         # TODO: implement this
         w_sum = 0
-        for i in self.particle_cloud:
+        for i in self.particle_cloud:   #iterate through cloud and get total sum of weights
             w_sum += i.w
         for i in self.particle_cloud:
-            i.w /= w_sum
+            i.w /= w_sum                #divide each weight by total to change total sum to 1
 
     def publish_particles(self, msg):
         particles_conv = []
