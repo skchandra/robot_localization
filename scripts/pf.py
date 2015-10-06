@@ -127,9 +127,8 @@ class ParticleFilter:
         except rospy.ServiceException, e:
             print "Failed to get map from service: " + e
         map = self.map_serv().map
-
-        # for now we have commented out the occupancy field initialization until you can successfully fetch the map
         self.occupancy_field = OccupancyField(map)
+
         self.initialized = True
 
     def update_robot_pose(self):
@@ -145,12 +144,12 @@ class ParticleFilter:
         # just to get started we will fix the robot's pose to always be at the origin
         x_sum, y_sum, theta_sum = 0, 0, 0 
         for i in self.particle_cloud:   #iterate through the particle cloud
-            x_sum += i.x * i.w          #add weighted x, y, theta of each particle
+            x_sum += i.x * i.w          #take weighted sum of x, y, theta from each particle
             y_sum += i.y * i.w
             theta_sum += i.theta * i.w
 
         particle_mean = Particle(x=x_sum, y=y_sum, theta=theta_sum)  #create avg particle
-        self.robot_pose = particle_mean.as_pose()   #set robot pose at avg particle
+        self.robot_pose = particle_mean.as_pose()   				 #set robot pose at avg particle
 
     def update_particles_with_odom(self, msg):
         """ Update the particles using the newly given odometry pose.
@@ -181,8 +180,8 @@ class ParticleFilter:
 
         for i in self.particle_cloud:   #for each particle transform position
             i.theta += r1
-            i.x     += gauss(d * math.cos(i.theta), self.ODOM_ERROR)    #add noise
-            i.y     += gauss(d * math.sin(i.theta), self.ODOM_ERROR)    #add noise
+            i.x     += gauss(d * math.cos(i.theta), self.ODOM_ERROR)    #add x noise
+            i.y     += gauss(d * math.sin(i.theta), self.ODOM_ERROR)    #add y noise
             i.theta += r2
 
     def map_calc_range(self,x,y,theta):
@@ -209,12 +208,12 @@ class ParticleFilter:
     def update_particles_with_laser(self, msg):
         """ Updates the particle weights in response to the scan contained in the msg """
         # TODO: implement this
-        scan_range = range(360) #all scan distances
+        scan_range = range(360) #iterate through all scan angles
         weights = {}
-        particle_num = 0
+        particle_num = 0  #counter
         for j in scan_range:
             for i in self.particle_cloud:   #for each scan angle go through each particle
-                if msg.ranges[j] == 0.0:    #do not use distance if it is 0.0 ie no obstacle
+                if msg.ranges[j] == 0.0:    #ignore scan values of 0.0, i.e. no obstacle
                     continue
                 # Transform laser scan obstacle point to reference frame of particle
                 r = msg.ranges[j]
